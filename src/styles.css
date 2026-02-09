@@ -430,23 +430,86 @@ textarea{
 }
 @media (max-width: 760px){
   .controlPanel{
-    flex-direction: column;
+    flex-direction: row;
+    align-items: stretch;
+    gap: 8px;
   }
   .targetRow{
     align-items: stretch;
   }
   .targetsGroup{
     justify-content: space-between;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
   }
   .steppers{
-    flex-direction: row;
+    flex-direction: column;
+    min-width: 88px;
+    align-self: stretch;
+    gap: 6px;
+  }
+  .target{
     min-width: 0;
-    align-self: auto;
-    gap:10px;
+    padding: 4px 8px 7px 8px;
+  }
+  .targetLabel{
+    font-size: 10px;
+    margin-bottom: 4px;
+  }
+  .segDigit{
+    width: 22px;
+    height: 38px;
+  }
+  .seg-a, .seg-d, .seg-g{
+    left: 4px;
+    width: 14px;
+  }
+  .seg-g{ top: 17px; }
+  .seg-d{ bottom: 1px; }
+  .seg-b, .seg-c, .seg-e, .seg-f{
+    height: 13px;
+  }
+  .seg-f{ top: 3px; }
+  .seg-e{ top: 21px; }
+  .seg-b{ top: 3px; }
+  .seg-c{ top: 21px; }
+  .targetSmall{
+    font-size: 11px;
+  }
+  .btnRow{
+    gap: 6px;
+    flex-wrap: nowrap;
   }
   .btnRow .btn{
-    flex: 1 1 auto;
+    flex: 1 1 0;
+    min-width: 0;
+  }
+  .btnRow .btn.ok,
+  .btnRow .btn.warn,
+  .btnRow .btn.done{
+    font-size: 12px;
+    padding: 6px 7px;
+    border-radius: 10px;
+    letter-spacing: .01em;
+  }
+  .clearIconBtn{
+    flex: 0 0 30px !important;
+    min-width: 30px;
+    font-size: 15px;
+    padding: 6px 0;
+  }
+  .stepGroup{
+    min-width: 88px;
+    min-height: 52px;
+    padding: 5px 7px;
+    border-radius: 12px;
+  }
+  .stepBtns{
+    gap: 5px;
+  }
+  .stepBtn{
+    padding: 8px 0;
+    border-radius: 10px;
+    font-size: 14px;
   }
 }
 .stepGroup{
