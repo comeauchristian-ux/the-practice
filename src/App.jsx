@@ -12,7 +12,7 @@ const PROGRAM = {
     name: 'Day A',
     exercises: [
       { id:'ohp', name:'Standing Shoulder Press', hint:'Barbell', type:'strength', defaultWeight: 95, defaultReps: 6, weightStep: 5, repsStep: 1 },
-      { id:'pullups', name:'Pull-Ups', hint:'Wide overhand', type:'strength', defaultWeight: 0, defaultReps: 12, weightStep: 5, repsStep: 1 },
+      { id:'pullups', name:'Pull-Ups', hint:'', type:'strength', defaultWeight: 0, defaultReps: 12, weightStep: 5, repsStep: 1 },
       { id:'rdl', name:'Romanian Deadlift', hint:'', type:'strength', defaultWeight: 185, defaultReps: 8, weightStep: 5, repsStep: 1 },
       { id:'legext', name:'Leg Extensions', hint:'', type:'strength', defaultWeight: 90, defaultReps: 12, weightStep: 5, repsStep: 1 },
       { id:'tbar', name:'Chest-Supported T-Bar Row', hint:'Wide grip', type:'strength', defaultWeight: 70, defaultReps: 12, weightStep: 5, repsStep: 1 },
@@ -21,7 +21,7 @@ const PROGRAM = {
       { id:'skull', name:'Cable Overhead Extensions', hint:'', type:'strength', defaultWeight: 52.5, defaultReps: 10, weightStep: 2.5, repsStep: 1 },
       { id:'latraise', name:'Lean-Away Lateral Raises', hint:'', type:'strength', defaultWeight: 10, defaultReps: 8, weightStep: 2.5, repsStep: 1 },
       { id:'calves', name:'Standing Calf Raises', hint:'', type:'strength', defaultWeight: 600, defaultReps: 12, weightStep: 5, repsStep: 1 },
-      { id:'legraises', name:'Leg Raises', hint:'(see note)', type:'strength', defaultWeight: 0, defaultReps: 11, weightStep: 5, repsStep: 1 },
+      { id:'legraises', name:'Leg Raises', hint:'', type:'strength', defaultWeight: 0, defaultReps: 11, weightStep: 5, repsStep: 1 },
       { id:'walk', name:'Incline Walking', hint:'15 min', type:'cardio', defaultIncline: 5.0, defaultSpeed: 5.4, inclineStep: 0.5, speedStep: 0.1 },
     ],
   },
@@ -33,12 +33,12 @@ const PROGRAM = {
       { id:'squat', name:'Squats', hint:'', type:'strength', defaultWeight: 185, defaultReps: 8, weightStep: 5, repsStep: 1 },
       { id:'legcurl', name:'Seated Leg Curls', hint:'', type:'strength', defaultWeight: 90, defaultReps: 12, weightStep: 5, repsStep: 1 },
       { id:'tbar', name:'Chest-Supported T-Bar Row', hint:'Wide grip', type:'strength', defaultWeight: 70, defaultReps: 12, weightStep: 5, repsStep: 1 },
-      { id:'dips', name:'Chest Dips', hint:'Deep', type:'strength', defaultWeight: 0, defaultReps: 12, weightStep: 5, repsStep: 1 },
-      { id:'backext', name:'Back Extensions', hint:'Roman chair', type:'strength', defaultWeight: 0, defaultReps: 12, weightStep: 5, repsStep: 1 },
-      { id:'pecdeck', name:'Pec Deck Fly', hint:'Wide', type:'strength', defaultWeight: 120, defaultReps: 12, weightStep: 5, repsStep: 1 },
-      { id:'revpec', name:'Reverse Pec Deck', hint:'Wide', type:'strength', defaultWeight: 90, defaultReps: 12, weightStep: 5, repsStep: 1 },
+      { id:'dips', name:'Chest Dips', hint:'', type:'strength', defaultWeight: 0, defaultReps: 12, weightStep: 5, repsStep: 1 },
+      { id:'backext', name:'Back Extensions', hint:'', type:'strength', defaultWeight: 0, defaultReps: 12, weightStep: 5, repsStep: 1 },
+      { id:'pecdeck', name:'Pec Deck Fly', hint:'', type:'strength', defaultWeight: 120, defaultReps: 12, weightStep: 5, repsStep: 1 },
+      { id:'revpec', name:'Reverse Pec Deck', hint:'', type:'strength', defaultWeight: 90, defaultReps: 12, weightStep: 5, repsStep: 1 },
       { id:'calves', name:'Standing Calf Raises', hint:'', type:'strength', defaultWeight: 600, defaultReps: 12, weightStep: 5, repsStep: 1 },
-      { id:'legraises', name:'Leg Raises', hint:'(see note)', type:'strength', defaultWeight: 0, defaultReps: 11, weightStep: 5, repsStep: 1 },
+      { id:'legraises', name:'Leg Raises', hint:'', type:'strength', defaultWeight: 0, defaultReps: 11, weightStep: 5, repsStep: 1 },
       { id:'walk', name:'Incline Walking', hint:'15 min', type:'cardio', defaultIncline: 5.0, defaultSpeed: 5.4, inclineStep: 0.5, speedStep: 0.1 },
     ],
   },
@@ -115,12 +115,6 @@ function resolveWorkoutDayKey(logs, date){
   }
   return 'A'
 }
-function prettyStateTag(v){
-  if(v==='inevitable') return { label:'Inevitable', cls:'ok' }
-  if(v==='contested') return { label:'Contested', cls:'warn' }
-  if(v==='done') return { label:'Done', cls:'done' }
-  return { label:'—', cls:'' }
-}
 function deepClone(obj){
   return obj ? JSON.parse(JSON.stringify(obj)) : obj
 }
@@ -140,31 +134,98 @@ function StatChip({children, title}){
   return <span className="chip" title={title}>{children}</span>
 }
 
+const SEGMENT_MAP = {
+  '0': ['a','b','c','d','e','f'],
+  '1': ['b','c'],
+  '2': ['a','b','d','e','g'],
+  '3': ['a','b','c','d','g'],
+  '4': ['b','c','f','g'],
+  '5': ['a','c','d','f','g'],
+  '6': ['a','c','d','e','f','g'],
+  '7': ['a','b','c'],
+  '8': ['a','b','c','d','e','f','g'],
+  '9': ['a','b','c','d','f','g'],
+}
+
+function formatSegmentNumber(value){
+  if(typeof value !== 'number' || Number.isNaN(value)) return '0'
+  const rounded = Math.round(value * 10) / 10
+  return Number.isInteger(rounded) ? String(rounded) : String(rounded).replace(/\.0$/, '')
+}
+
+function SegmentGlyph({char}){
+  if(char === '.'){
+    return <span className="segDot" />
+  }
+  if(char === '-'){
+    return (
+      <span className="segDigit">
+        <span className="seg seg-g on" />
+      </span>
+    )
+  }
+
+  const lit = SEGMENT_MAP[char] || []
+  return (
+    <span className="segDigit">
+      <span className={'seg seg-a' + (lit.includes('a') ? ' on' : '')} />
+      <span className={'seg seg-b' + (lit.includes('b') ? ' on' : '')} />
+      <span className={'seg seg-c' + (lit.includes('c') ? ' on' : '')} />
+      <span className={'seg seg-d' + (lit.includes('d') ? ' on' : '')} />
+      <span className={'seg seg-e' + (lit.includes('e') ? ' on' : '')} />
+      <span className={'seg seg-f' + (lit.includes('f') ? ' on' : '')} />
+      <span className={'seg seg-g' + (lit.includes('g') ? ' on' : '')} />
+    </span>
+  )
+}
+
+function SegmentDisplay({value}){
+  const text = formatSegmentNumber(value)
+  return (
+    <div className="segmentDisplay" aria-label={text}>
+      {text.split('').map((char, idx) => (
+        <SegmentGlyph char={char} key={idx} />
+      ))}
+    </div>
+  )
+}
+
 function formatTarget(ex, entry, plan){
   if(ex.type === 'cardio'){
     const inc = entry?.incline ?? plan?.defaultIncline ?? ex.defaultIncline ?? 0
     const spd = entry?.speed ?? plan?.defaultSpeed ?? ex.defaultSpeed ?? 0
-    return { primary: `${inc}%`, secondary: `${spd} kph`, inc, spd }
+    return {
+      primary: `${inc}%`,
+      secondary: `${spd} kph`,
+      left: { label: 'Incline', value: inc, unit: '%' },
+      right: { label: 'Speed', value: spd, unit: 'kph' },
+      inc,
+      spd,
+    }
   }
   const w = entry?.weight ?? plan?.defaultWeight ?? ex.defaultWeight ?? 0
   const r = entry?.reps ?? plan?.defaultReps ?? ex.defaultReps ?? 0
-  return { primary: `${w} lb`, secondary: `${r} reps`, w, r }
+  return {
+    primary: `${w} lb`,
+    secondary: `${r} reps`,
+    left: { label: 'Weight', value: w, unit: 'lb' },
+    right: { label: 'Reps', value: r, unit: 'reps' },
+    w,
+    r,
+  }
 }
 
 function ExerciseTile({
   exercise,
   entry,
-  cueText,
   planEntry,
   historyLines,
   onSetState,
   onAdjust,
   onOpenDetails,
   onOpenNote,
-  onClear,
-  onOpenHelp,
+  onClearState,
 }){
-  const tag = prettyStateTag(entry?.state)
   const target = formatTarget(exercise, entry, planEntry)
 
   const tileCls = [
@@ -180,15 +241,41 @@ function ExerciseTile({
         <button className="tileTitleBtn" onClick={() => onOpenDetails(exercise.id)} title="Open exercise details">
           <div className="tileName">{exercise.name}</div>
           {exercise.hint ? <div className="tileMeta">{exercise.hint}</div> : null}
-          {cueText ? <div className="presenceCue">{cueText}</div> : null}
         </button>
-        <div className={'stateTag ' + tag.cls}>{tag.label}</div>
+        <Button variant="ghost topNoteBtn" onClick={() => onOpenNote(exercise.id)}>✎ Note</Button>
       </div>
 
-      <div className="targetRow">
-        <div className="target">
-          <div className="targetBig">{target.primary}</div>
-          <div className="targetSmall">{target.secondary}</div>
+      <div className="controlPanel">
+        <div className="leftStack">
+          <div className="targetRow">
+            <div className="targetsGroup">
+              <div className="target">
+                <div className="targetLabel">{target.left.label}</div>
+                <SegmentDisplay value={target.left.value} />
+                <div className="targetSmall">{target.left.unit}</div>
+              </div>
+              <div className="target">
+                <div className="targetLabel">{target.right.label}</div>
+                <SegmentDisplay value={target.right.value} />
+                <div className="targetSmall">{target.right.unit}</div>
+              </div>
+            </div>
+          </div>
+
+          <div className="btnRow">
+            {exercise.id === 'walk' ? (
+              <>
+                <Button variant={entry?.state === 'done' ? 'done active' : 'done'} onClick={() => onSetState(exercise.id, 'done')}>◉ Done</Button>
+                <Button variant="ghost clearIconBtn" onClick={() => onClearState(exercise.id)} title="Clear exercise state">↺</Button>
+              </>
+            ) : (
+              <>
+                <Button variant={entry?.state === 'inevitable' ? 'ok active' : 'ok'} onClick={() => onSetState(exercise.id, 'inevitable')}>✓ Inevitable</Button>
+                <Button variant={entry?.state === 'contested' ? 'warn active' : 'warn'} onClick={() => onSetState(exercise.id, 'contested')}>△ Contested</Button>
+                <Button variant="ghost clearIconBtn" onClick={() => onClearState(exercise.id)} title="Clear exercise state">↺</Button>
+              </>
+            )}
+          </div>
         </div>
 
         <div className="steppers">
@@ -197,15 +284,15 @@ function ExerciseTile({
               <div className="stepGroup">
                 <div className="stepLabel">Incline</div>
                 <div className="stepBtns">
-                  <button className="stepBtn" onClick={() => onAdjust(exercise.id, 'incline', -exercise.inclineStep)}>-</button>
-                  <button className="stepBtn" onClick={() => onAdjust(exercise.id, 'incline', +exercise.inclineStep)}>+</button>
+                  <button className="stepBtn" aria-label="Decrease incline" title="Decrease incline" onClick={() => onAdjust(exercise.id, 'incline', -exercise.inclineStep)} />
+                  <button className="stepBtn" aria-label="Increase incline" title="Increase incline" onClick={() => onAdjust(exercise.id, 'incline', +exercise.inclineStep)} />
                 </div>
               </div>
               <div className="stepGroup">
                 <div className="stepLabel">Speed</div>
                 <div className="stepBtns">
-                  <button className="stepBtn" onClick={() => onAdjust(exercise.id, 'speed', -exercise.speedStep)}>-</button>
-                  <button className="stepBtn" onClick={() => onAdjust(exercise.id, 'speed', +exercise.speedStep)}>+</button>
+                  <button className="stepBtn" aria-label="Decrease speed" title="Decrease speed" onClick={() => onAdjust(exercise.id, 'speed', -exercise.speedStep)} />
+                  <button className="stepBtn" aria-label="Increase speed" title="Increase speed" onClick={() => onAdjust(exercise.id, 'speed', +exercise.speedStep)} />
                 </div>
               </div>
             </>
@@ -214,34 +301,20 @@ function ExerciseTile({
               <div className="stepGroup">
                 <div className="stepLabel">Weight</div>
                 <div className="stepBtns">
-                  <button className="stepBtn" onClick={() => onAdjust(exercise.id, 'weight', -exercise.weightStep)}>-</button>
-                  <button className="stepBtn" onClick={() => onAdjust(exercise.id, 'weight', +exercise.weightStep)}>+</button>
+                  <button className="stepBtn" aria-label="Decrease weight" title="Decrease weight" onClick={() => onAdjust(exercise.id, 'weight', -exercise.weightStep)} />
+                  <button className="stepBtn" aria-label="Increase weight" title="Increase weight" onClick={() => onAdjust(exercise.id, 'weight', +exercise.weightStep)} />
                 </div>
               </div>
               <div className="stepGroup">
                 <div className="stepLabel">Reps</div>
                 <div className="stepBtns">
-                  <button className="stepBtn" onClick={() => onAdjust(exercise.id, 'reps', -exercise.repsStep)}>-</button>
-                  <button className="stepBtn" onClick={() => onAdjust(exercise.id, 'reps', +exercise.repsStep)}>+</button>
+                  <button className="stepBtn" aria-label="Decrease reps" title="Decrease reps" onClick={() => onAdjust(exercise.id, 'reps', -exercise.repsStep)} />
+                  <button className="stepBtn" aria-label="Increase reps" title="Increase reps" onClick={() => onAdjust(exercise.id, 'reps', +exercise.repsStep)} />
                 </div>
               </div>
             </>
           )}
         </div>
-      </div>
-
-      <div className="btnRow">
-        {exercise.id === 'walk' ? (
-          <Button variant="done" onClick={() => onSetState(exercise.id, 'done')}>◉ Done</Button>
-        ) : (
-          <>
-            <Button variant="ok" onClick={() => onSetState(exercise.id, 'inevitable')}>✓ Inevitable</Button>
-            <Button variant="warn" onClick={() => onSetState(exercise.id, 'contested')}>△ Contested</Button>
-          </>
-        )}
-        <Button variant="ghost" onClick={() => onOpenNote(exercise.id)}>✎ Note</Button>
-        <Button variant="ghost" onClick={() => onClear(exercise.id)} title="Clear this day entry">↺ Clear</Button>
-        <button className="btn ghost helpBtn" onClick={onOpenHelp} title="Inevitable vs Contested help">?</button>
       </div>
 
       {historyLines?.length ? (
@@ -346,28 +419,6 @@ function buildExerciseCounts(logs, exId){
   return arr
 }
 
-function getLastCue(exerciseId, logs, todayDate){
-  const dates = Object.keys(logs || {}).sort().reverse()
-  for(const date of dates){
-    if(date === todayDate) continue
-
-    const candidates = []
-    for(const dayKey of ['A','B']){
-      const entry = logs?.[date]?.[dayKey]?.[exerciseId]
-      if(entry?.state === 'inevitable' || entry?.state === 'contested'){
-        candidates.push(entry)
-      }
-    }
-
-    if(!candidates.length) continue
-    candidates.sort((a,b) => (b.updatedAt || 0) - (a.updatedAt || 0))
-
-    if(candidates[0].state === 'inevitable') return 'One more breath'
-    if(candidates[0].state === 'contested') return 'This rep, fully'
-  }
-  return 'Let the movement show itself'
-}
-
 // ===========================
 // 5) App
 // ===========================
@@ -397,15 +448,6 @@ export default function App(){
     return out
   }, [appState.logs])
 
-  const cueByExId = React.useMemo(() => {
-    const out = {}
-    for(const ex of day.exercises){
-      const hasTodayState = Boolean(todaysLog?.[ex.id]?.state)
-      out[ex.id] = hasTodayState ? '' : getLastCue(ex.id, appState.logs, date)
-    }
-    return out
-  }, [appState.logs, day.exercises, date, todaysLog])
-
   function persist(next){
     setAppState(next)
     saveState(next)
@@ -419,9 +461,20 @@ export default function App(){
     persist(next)
   }
 
-  function clearExercise(exId){
+  function clearExerciseState(exId){
     const next = ensureDayLog(deepClone(appState), date, activeDayKey)
-    if(next.logs?.[date]?.[activeDayKey]) delete next.logs[date][activeDayKey][exId]
+    const dayLog = next.logs?.[date]?.[activeDayKey]
+    const prev = dayLog?.[exId]
+    if(!prev) return
+
+    const { state, ...rest } = prev
+    if(!state) return
+
+    if(Object.keys(rest).length === 0){
+      delete dayLog[exId]
+    }else{
+      dayLog[exId] = { ...rest, updatedAt: Date.now() }
+    }
     persist(next)
   }
 
@@ -496,6 +549,7 @@ export default function App(){
           <h1>The Practice</h1>
           <div className="subtitle">One set. Stable targets. Quick tweaks. Honest history.</div>
         </div>
+        <button className="btn ghost topHelpBtn" onClick={() => setShowStateHelp(true)} title="Inevitable vs Contested help">?</button>
       </header>
       <div className="grid">
         <div className="card">
@@ -517,15 +571,13 @@ export default function App(){
                   key={ex.id}
                   exercise={ex}
                   entry={todaysLog[ex.id]}
-                  cueText={cueByExId[ex.id]}
                   planEntry={appState.plan?.[ex.id]}
                   historyLines={historyByExId[ex.id]}
                   onSetState={(id, state) => updateExercise(id, { state })}
                   onAdjust={adjust}
                   onOpenDetails={openDetails}
                   onOpenNote={openNote}
-                  onClear={clearExercise}
-                  onOpenHelp={() => setShowStateHelp(true)}
+                  onClearState={clearExerciseState}
                 />
               ))}
             </div>
