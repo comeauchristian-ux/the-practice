@@ -1,12 +1,8 @@
 import React from 'react'
-import { buildImportedLogs } from './importHistory'
 
 // ===========================
 // 1) PROGRAM (edit here)
 // ===========================
-// You said: one set only. So each exercise has a single target.
-// - type: "strength" uses weight + reps
-// - type: "cardio" uses incline + speed (kph)
 const PROGRAM = {
   A: {
     name: 'Day A',
@@ -47,79 +43,136 @@ const PROGRAM = {
 // ===========================
 // 2) STORAGE (local-first)
 // ===========================
-const STORAGE_KEY = 'gym_practice_vite_v2'
-const IMPORTED_LOGS = buildImportedLogs()
+const STORAGE_KEY = 'gym_practice_vite_v3'
+const LEGACY_STORAGE_KEY = 'gym_practice_vite_v2'
+
+function deepClone(obj){
+  return obj ? JSON.parse(JSON.stringify(obj)) : obj
+}
+
+function clamp(n, min, max){
+  return Math.min(max, Math.max(min, n))
+}
+
+function normalizeCount(value){
+  return Number.isFinite(value) ? Math.max(0, Math.floor(value)) : 0
+}
+
+function normalizeState(raw){
+  return raw === 'inevitable' || raw === 'contested' ? raw : undefined
+}
+
+function normalizeExerciseRecord(raw){
+  if(!raw || typeof raw !== 'object'){
+    return {
+      inevitableCount: 0,
+      contestedCount: 0,
+      history: [],
+      performanceHistory: [],
+    }
+  }
+
+  const history = Array.isArray(raw.history)
+    ? raw.history.filter((s) => s === 'inevitable' || s === 'contested')
+    : []
+  const performanceHistory = Array.isArray(raw.performanceHistory)
+    ? raw.performanceHistory.filter((item) => typeof item === 'string' && item.trim())
+    : []
+
+  return {
+    ...raw,
+    inevitableCount: normalizeCount(raw.inevitableCount),
+    contestedCount: normalizeCount(raw.contestedCount),
+    history,
+    performanceHistory,
+    lastState: normalizeState(raw.lastState),
+    state: normalizeState(raw.state),
+  }
+}
+
+function migrateLegacyState(parsed){
+  const next = {
+    dayKey: parsed?.dayKey === 'B' ? 'B' : 'A',
+    plan: parsed?.plan || {},
+    sessions: { A: {}, B: {} },
+  }
+
+  const logs = parsed?.logs || {}
+  const dates = Object.keys(logs).sort()
+
+  for(const date of dates){
+    for(const dayKey of ['A', 'B']){
+      const dayLog = logs?.[date]?.[dayKey]
+      if(!dayLog || typeof dayLog !== 'object') continue
+
+      for(const exId of Object.keys(dayLog)){
+        const source = dayLog[exId]
+        if(!source || typeof source !== 'object') continue
+
+        const current = normalizeExerciseRecord(next.sessions[dayKey][exId])
+        const merged = { ...current }
+
+        if(typeof source.weight === 'number') merged.weight = source.weight
+        if(typeof source.reps === 'number') merged.reps = source.reps
+        if(typeof source.incline === 'number') merged.incline = source.incline
+        if(typeof source.speed === 'number') merged.speed = source.speed
+        if(typeof source.note === 'string' && source.note.trim()) merged.note = source.note.trim()
+
+        const state = normalizeState(source.state)
+        if(state === 'inevitable') merged.inevitableCount += 1
+        if(state === 'contested') merged.contestedCount += 1
+        if(state){
+          merged.history = [...merged.history, state]
+          merged.lastState = state
+        }
+
+        next.sessions[dayKey][exId] = merged
+      }
+    }
+  }
+
+  return next
+}
+
+function normalizeLoadedState(parsed){
+  const base = {
+    dayKey: parsed?.dayKey === 'B' ? 'B' : 'A',
+    plan: parsed?.plan || {},
+    sessions: { A: {}, B: {} },
+  }
+
+  for(const dayKey of ['A', 'B']){
+    const session = parsed?.sessions?.[dayKey] || {}
+    for(const exId of Object.keys(session)){
+      base.sessions[dayKey][exId] = normalizeExerciseRecord(session[exId])
+    }
+  }
+
+  return base
+}
 
 function loadState(){
   try{
     const raw = localStorage.getItem(STORAGE_KEY)
-    if(!raw) return { view:'today', dayKey:'A', plan:{}, logs:deepClone(IMPORTED_LOGS) }
-    const parsed = JSON.parse(raw)
-    const mergedLogs = mergeLogsWithImported(parsed.logs || {})
-    return { view:'today', dayKey:'A', plan:{}, ...parsed, logs:mergedLogs }
-  }catch(e){
-    return { view:'today', dayKey:'A', plan:{}, logs:deepClone(IMPORTED_LOGS) }
-  }
-}
-function mergeLogsWithImported(logs){
-  const merged = deepClone(IMPORTED_LOGS) || {}
-  for(const date of Object.keys(logs || {})){
-    if(!merged[date]) merged[date] = {}
-    for(const dayKey of Object.keys(logs[date] || {})){
-      merged[date][dayKey] = { ...(merged[date][dayKey] || {}), ...(logs[date][dayKey] || {}) }
+    if(raw){
+      const parsed = JSON.parse(raw)
+      return normalizeLoadedState(parsed)
     }
+
+    const legacyRaw = localStorage.getItem(LEGACY_STORAGE_KEY)
+    if(legacyRaw){
+      const parsedLegacy = JSON.parse(legacyRaw)
+      return migrateLegacyState(parsedLegacy)
+    }
+
+    return { dayKey: 'A', plan: {}, sessions: { A: {}, B: {} } }
+  }catch(e){
+    return { dayKey: 'A', plan: {}, sessions: { A: {}, B: {} } }
   }
-  return merged
 }
+
 function saveState(state){
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state))
-}
-function todayISO(){
-  const d = new Date()
-  const y = d.getFullYear()
-  const m = String(d.getMonth()+1).padStart(2,'0')
-  const day = String(d.getDate()).padStart(2,'0')
-  return `${y}-${m}-${day}`
-}
-function addDaysISO(dateISO, deltaDays){
-  const [y, m, d] = dateISO.split('-').map(Number)
-  const dt = new Date(y, m - 1, d)
-  dt.setDate(dt.getDate() + deltaDays)
-  const yy = dt.getFullYear()
-  const mm = String(dt.getMonth()+1).padStart(2,'0')
-  const dd = String(dt.getDate()).padStart(2,'0')
-  return `${yy}-${mm}-${dd}`
-}
-function oppositeDayKey(dayKey){
-  return dayKey === 'A' ? 'B' : 'A'
-}
-function pickDominantDayKeyForDate(logs, date){
-  const dayA = logs?.[date]?.A || {}
-  const dayB = logs?.[date]?.B || {}
-  const aCount = Object.keys(dayA).length
-  const bCount = Object.keys(dayB).length
-  if(aCount && !bCount) return 'A'
-  if(bCount && !aCount) return 'B'
-  if(!aCount && !bCount) return null
-  const aTs = Math.max(0, ...Object.values(dayA).map(e => e?.updatedAt || 0))
-  const bTs = Math.max(0, ...Object.values(dayB).map(e => e?.updatedAt || 0))
-  return aTs >= bTs ? 'A' : 'B'
-}
-function resolveWorkoutDayKey(logs, date){
-  const onDate = pickDominantDayKeyForDate(logs, date)
-  if(onDate) return onDate
-  const dates = Object.keys(logs || {}).filter(d => d < date).sort().reverse()
-  for(const d of dates){
-    const prior = pickDominantDayKeyForDate(logs, d)
-    if(prior) return oppositeDayKey(prior)
-  }
-  return 'A'
-}
-function deepClone(obj){
-  return obj ? JSON.parse(JSON.stringify(obj)) : obj
-}
-function clamp(n, min, max){
-  return Math.min(max, Math.max(min, n))
 }
 
 // ===========================
@@ -199,8 +252,6 @@ function formatTarget(ex, entry, plan){
       secondary: `${spd} kph`,
       left: { label: 'Incline', value: inc, unit: '%' },
       right: { label: 'Speed', value: spd, unit: 'kph' },
-      inc,
-      spd,
     }
   }
   const w = entry?.weight ?? plan?.defaultWeight ?? ex.defaultWeight ?? 0
@@ -210,16 +261,32 @@ function formatTarget(ex, entry, plan){
     secondary: `${r} reps`,
     left: { label: 'Weight', value: w, unit: 'lb' },
     right: { label: 'Reps', value: r, unit: 'reps' },
-    w,
-    r,
   }
+}
+
+function formatStateLabel(state){
+  if(state === 'inevitable') return 'Inevitable'
+  if(state === 'contested') return 'Contested'
+  return ''
+}
+
+function buildFrequencyLines(performanceHistory){
+  const map = new Map()
+  for(const signature of performanceHistory || []){
+    if(!signature) continue
+    map.set(signature, (map.get(signature) || 0) + 1)
+  }
+  return Array.from(map.entries())
+    .map(([signature, count]) => ({ signature, count }))
+    .sort((a, b) => b.count - a.count || a.signature.localeCompare(b.signature))
+    .slice(0, 3)
+    .map((item) => `${item.signature}  n=${item.count}`)
 }
 
 function ExerciseTile({
   exercise,
   entry,
   planEntry,
-  historyLines,
   onSetState,
   onAdjust,
   onOpenDetails,
@@ -227,13 +294,16 @@ function ExerciseTile({
   onClearState,
 }){
   const target = formatTarget(exercise, entry, planEntry)
+  const stableEntry = normalizeExerciseRecord(entry)
 
   const tileCls = [
     'tile',
-    entry?.state === 'inevitable' ? 'tileOk' : '',
-    entry?.state === 'contested' ? 'tileWarn' : '',
-    entry?.state === 'done' ? 'tileDone' : '',
+    stableEntry?.state === 'inevitable' ? 'tileOk' : '',
+    stableEntry?.state === 'contested' ? 'tileWarn' : '',
   ].filter(Boolean).join(' ')
+
+  const recentBlocks = stableEntry.history.slice(-12)
+  const frequencyLines = buildFrequencyLines(stableEntry.performanceHistory)
 
   return (
     <div className={tileCls}>
@@ -263,18 +333,9 @@ function ExerciseTile({
           </div>
 
           <div className="btnRow">
-            {exercise.id === 'walk' ? (
-              <>
-                <Button variant={entry?.state === 'done' ? 'done active' : 'done'} onClick={() => onSetState(exercise.id, 'done')}>◉ Done</Button>
-                <Button variant="ghost clearIconBtn" onClick={() => onClearState(exercise.id)} title="Clear exercise state">↺</Button>
-              </>
-            ) : (
-              <>
-                <Button variant={entry?.state === 'inevitable' ? 'ok active' : 'ok'} onClick={() => onSetState(exercise.id, 'inevitable')}>✓ Inevitable</Button>
-                <Button variant={entry?.state === 'contested' ? 'warn active' : 'warn'} onClick={() => onSetState(exercise.id, 'contested')}>△ Contested</Button>
-                <Button variant="ghost clearIconBtn" onClick={() => onClearState(exercise.id)} title="Clear exercise state">↺</Button>
-              </>
-            )}
+            <Button variant={stableEntry?.state === 'inevitable' ? 'ok active' : 'ok'} onClick={() => onSetState(exercise.id, 'inevitable')}>✓ Inevitable</Button>
+            <Button variant={stableEntry?.state === 'contested' ? 'warn active' : 'warn'} onClick={() => onSetState(exercise.id, 'contested')}>△ Contested</Button>
+            <Button variant="ghost clearIconBtn" onClick={() => onClearState(exercise.id)} title="Clear exercise state">↺</Button>
           </div>
         </div>
 
@@ -317,20 +378,25 @@ function ExerciseTile({
         </div>
       </div>
 
-      {historyLines?.length ? (
-        <div className="historyMini">
-          {historyLines.slice(0,2).map((ln, idx) => (
-            <div className="historyLine" key={idx}>{ln}</div>
-          ))}
+      <div className="historyMini">
+        <div className="stabilityBars" aria-label="Last 12 logged states">
+          {recentBlocks.length ? recentBlocks.map((state, idx) => (
+            <span key={idx} className={'stabilityBlock ' + state} />
+          )) : <span className="stabilityEmpty">No sealed logs yet.</span>}
         </div>
-      ) : (
-        <div className="historyMini muted">No history yet.</div>
-      )}
+        {frequencyLines.length ? (
+          <div className="liftHistoryList">
+            {frequencyLines.map((line, idx) => (
+              <div className="liftHistoryLine" key={idx}>{line}</div>
+            ))}
+          </div>
+        ) : null}
+      </div>
 
-      {entry?.note ? (
+      {stableEntry?.note ? (
         <div className="note">
           <div className="noteLabel">Note</div>
-          {entry.note}
+          {stableEntry.note}
         </div>
       ) : null}
     </div>
@@ -360,63 +426,44 @@ function Modal({title, children, onClose}){
 // ===========================
 // 4) Helpers
 // ===========================
-function ensureDayLog(state, date, dayKey){
-  const logs = state.logs || {}
-  if(!logs[date]) logs[date] = {}
-  if(!logs[date][dayKey]) logs[date][dayKey] = {}
-  state.logs = logs
-  return state
-}
 function ensurePlan(state){
   if(!state.plan) state.plan = {}
   return state
 }
 
-function exerciseById(exId){
-  for(const k of ['A','B']){
-    const found = PROGRAM[k].exercises.find(e => e.id === exId)
-    if(found) return found
-  }
-  return null
+function ensureSession(state, dayKey){
+  if(!state.sessions) state.sessions = { A: {}, B: {} }
+  if(!state.sessions[dayKey]) state.sessions[dayKey] = {}
+  return state
 }
 
-function buildExerciseCounts(logs, exId){
-  // returns [{key, count}] sorted by count desc then lastSeen desc
-  const map = new Map()
-  const lastSeen = new Map()
-  const dates = Object.keys(logs || {}).sort()
-  for(const d of dates){
-    for(const dayKey of ['A','B']){
-      const dayLog = logs?.[d]?.[dayKey]
-      const entry = dayLog?.[exId]
-      if(!entry) continue
-
-      const ex = exerciseById(exId)
-      if(!ex) continue
-
-      let key = ''
-      if(ex.type === 'cardio'){
-        const inc = entry.incline ?? ex.defaultIncline ?? 0
-        const spd = entry.speed ?? ex.defaultSpeed ?? 0
-        key = `${inc}% @ ${spd} kph`
-      }else{
-        const w = entry.weight ?? 0
-        const r = entry.reps ?? 0
-        key = `${w} lb × ${r}`
-      }
-
-      map.set(key, (map.get(key) || 0) + 1)
-      lastSeen.set(key, d)
+function ensureExerciseSession(state, dayKey, exId){
+  ensureSession(state, dayKey)
+  if(!state.sessions[dayKey][exId]){
+    state.sessions[dayKey][exId] = {
+      inevitableCount: 0,
+      contestedCount: 0,
+      history: [],
+      performanceHistory: [],
     }
   }
+  state.sessions[dayKey][exId] = normalizeExerciseRecord(state.sessions[dayKey][exId])
+  return state
+}
 
-  const arr = Array.from(map.entries()).map(([key, count]) => ({
-    key,
-    count,
-    lastSeen: lastSeen.get(key) || '0000-00-00',
-  }))
-  arr.sort((a,b) => (b.count - a.count) || (b.lastSeen.localeCompare(a.lastSeen)))
-  return arr
+function exerciseByIdAndDay(dayKey, exId){
+  return PROGRAM[dayKey]?.exercises?.find((e) => e.id === exId) || null
+}
+
+function buildPerformanceSignature(exercise, record, planEntry){
+  if(exercise.type === 'cardio'){
+    const incline = record.incline ?? planEntry?.defaultIncline ?? exercise.defaultIncline ?? 0
+    const speed = record.speed ?? planEntry?.defaultSpeed ?? exercise.defaultSpeed ?? 0
+    return `${incline}% @ ${speed} kph`
+  }
+  const weight = record.weight ?? planEntry?.defaultWeight ?? exercise.defaultWeight ?? 0
+  const reps = record.reps ?? planEntry?.defaultReps ?? exercise.defaultReps ?? 0
+  return `${weight} lb x ${reps} reps`
 }
 
 // ===========================
@@ -428,59 +475,69 @@ export default function App(){
   const [noteDraft, setNoteDraft] = React.useState('')
   const [detailsFor, setDetailsFor] = React.useState(null)
   const [showStateHelp, setShowStateHelp] = React.useState(false)
-  const [dateOffset, setDateOffset] = React.useState(0)
-  const today = todayISO()
-  const date = addDaysISO(today, dateOffset)
 
-  const activeDayKey = React.useMemo(() => resolveWorkoutDayKey(appState.logs, date), [appState.logs, date])
+  const activeDayKey = appState.dayKey === 'B' ? 'B' : 'A'
   const day = PROGRAM[activeDayKey]
-  const todaysLog = (appState.logs && appState.logs[date] && appState.logs[date][activeDayKey]) || {}
-
-  // Build per-exercise history summary lines (e.g., "185 lb × 8 — 13x")
-  const historyByExId = React.useMemo(() => {
-    const out = {}
-    for(const k of ['A','B']){
-      for(const ex of PROGRAM[k].exercises){
-        const counts = buildExerciseCounts(appState.logs, ex.id)
-        out[ex.id] = counts.map(it => `${it.key} — ${it.count}x`)
-      }
-    }
-    return out
-  }, [appState.logs])
+  const currentSession = appState.sessions?.[activeDayKey] || {}
 
   function persist(next){
     setAppState(next)
     saveState(next)
   }
 
+  function setDay(dayKey){
+    const next = deepClone(appState)
+    next.dayKey = dayKey === 'B' ? 'B' : 'A'
+    persist(next)
+  }
+
   function updateExercise(exId, patch){
-    const next = ensureDayLog(deepClone(appState), date, activeDayKey)
-    const dayLog = next.logs[date][activeDayKey]
-    const prev = dayLog[exId] || {}
-    dayLog[exId] = { ...prev, ...patch, updatedAt: Date.now() }
+    const next = ensureExerciseSession(deepClone(appState), activeDayKey, exId)
+    const prev = normalizeExerciseRecord(next.sessions[activeDayKey][exId])
+    next.sessions[activeDayKey][exId] = { ...prev, ...patch, state: normalizeState(patch.state ?? prev.state) }
     persist(next)
   }
 
   function clearExerciseState(exId){
-    const next = ensureDayLog(deepClone(appState), date, activeDayKey)
-    const dayLog = next.logs?.[date]?.[activeDayKey]
-    const prev = dayLog?.[exId]
-    if(!prev) return
-
+    const next = ensureExerciseSession(deepClone(appState), activeDayKey, exId)
+    const prev = normalizeExerciseRecord(next.sessions[activeDayKey][exId])
+    if(!prev.state) return
     const { state, ...rest } = prev
-    if(!state) return
+    next.sessions[activeDayKey][exId] = rest
+    persist(next)
+  }
 
-    if(Object.keys(rest).length === 0){
-      delete dayLog[exId]
-    }else{
-      dayLog[exId] = { ...rest, updatedAt: Date.now() }
+  function sealTrainingSession(){
+    const next = ensureSession(deepClone(appState), activeDayKey)
+
+    for(const ex of day.exercises){
+      ensureExerciseSession(next, activeDayKey, ex.id)
+      const record = normalizeExerciseRecord(next.sessions[activeDayKey][ex.id])
+
+      if(record.state === 'inevitable'){
+        record.inevitableCount += 1
+        record.history = [...record.history, 'inevitable']
+        record.performanceHistory = [...record.performanceHistory, buildPerformanceSignature(ex, record, next.plan?.[ex.id])]
+        record.lastState = 'inevitable'
+      }else if(record.state === 'contested'){
+        record.contestedCount += 1
+        record.history = [...record.history, 'contested']
+        record.performanceHistory = [...record.performanceHistory, buildPerformanceSignature(ex, record, next.plan?.[ex.id])]
+        record.lastState = 'contested'
+      }
+
+      // Explicitly clear current session markers after sealing.
+      delete record.state
+      delete record.note
+      next.sessions[activeDayKey][ex.id] = record
     }
+
     persist(next)
   }
 
   function openNote(exId){
     setNoteFor(exId)
-    setNoteDraft((todaysLog && todaysLog[exId] && todaysLog[exId].note) || '')
+    setNoteDraft((currentSession?.[exId]?.note) || '')
   }
 
   function saveNote(){
@@ -495,9 +552,10 @@ export default function App(){
   }
 
   function adjust(exId, field, delta){
-    const ex = exerciseById(exId)
+    const ex = exerciseByIdAndDay(activeDayKey, exId)
     if(!ex) return
-    const entry = todaysLog[exId] || {}
+
+    const entry = normalizeExerciseRecord(currentSession[exId])
     const plan = appState.plan?.[exId] || {}
 
     if(ex.type === 'cardio'){
@@ -525,9 +583,10 @@ export default function App(){
   }
 
   function setAsDefault(exId){
-    const ex = exerciseById(exId)
+    const ex = exerciseByIdAndDay(activeDayKey, exId)
     if(!ex) return
-    const entry = todaysLog[exId] || {}
+
+    const entry = normalizeExerciseRecord(currentSession[exId])
     const next = ensurePlan(deepClone(appState))
     if(!next.plan[exId]) next.plan[exId] = {}
 
@@ -551,28 +610,39 @@ export default function App(){
         </div>
         <button className="btn ghost topHelpBtn" onClick={() => setShowStateHelp(true)} title="Inevitable vs Contested help">?</button>
       </header>
+
       <div className="grid">
         <div className="card">
           <div className="cardHeader">
             <h2>{day.name}</h2>
-            <div className="dateNav">
-              <button className="dateNavBtn" onClick={() => setDateOffset(v => v - 1)} title="Previous day">←</button>
-              <div className="dayBadge">{date}</div>
-              <button className="dateNavBtn" onClick={() => setDateOffset(v => v + 1)} title="Next day">→</button>
-              {dateOffset !== 0 ? (
-                <button className="dateNavBtn reset" onClick={() => setDateOffset(0)} title={`Back to ${today}`}>Today</button>
-              ) : null}
+            <div className="dayToggle" role="tablist" aria-label="Workout day selector">
+              <button
+                className={'dayToggleBtn' + (activeDayKey === 'A' ? ' active' : '')}
+                onClick={() => setDay('A')}
+                role="tab"
+                aria-selected={activeDayKey === 'A'}
+              >
+                Day A
+              </button>
+              <button
+                className={'dayToggleBtn' + (activeDayKey === 'B' ? ' active' : '')}
+                onClick={() => setDay('B')}
+                role="tab"
+                aria-selected={activeDayKey === 'B'}
+              >
+                Day B
+              </button>
             </div>
           </div>
+
           <div className="cardBody">
             <div className="list">
               {day.exercises.map(ex => (
                 <ExerciseTile
                   key={ex.id}
                   exercise={ex}
-                  entry={todaysLog[ex.id]}
+                  entry={currentSession[ex.id]}
                   planEntry={appState.plan?.[ex.id]}
-                  historyLines={historyByExId[ex.id]}
                   onSetState={(id, state) => updateExercise(id, { state })}
                   onAdjust={adjust}
                   onOpenDetails={openDetails}
@@ -583,18 +653,22 @@ export default function App(){
             </div>
 
             <div className="footerHint">
-              Tip: click an exercise name to see its full history.
+              Select a state per exercise, then press Log Training to seal this session.
             </div>
           </div>
         </div>
       </div>
 
+      <div className="logTrainingWrap">
+        <button className="btn ok logTrainingBtn" onClick={sealTrainingSession}>Log Training</button>
+      </div>
+
       {noteFor ? (
         <Modal title="Add a note" onClose={() => setNoteFor(null)}>
           <div className="tiny" style={{marginBottom:8}}>
-            One line is enough. (Example: “Contested early — slept badly.”)
+            One line is enough. (Example: “Contested early - slept badly.”)
           </div>
-          <textarea value={noteDraft} onChange={(e)=>setNoteDraft(e.target.value)} placeholder="Write a short note…" />
+          <textarea value={noteDraft} onChange={(e)=>setNoteDraft(e.target.value)} placeholder="Write a short note..." />
           <div style={{display:'flex', gap:10, justifyContent:'flex-end', marginTop:10}}>
             <Button variant="ghost" onClick={() => setNoteFor(null)}>Cancel</Button>
             <Button variant="ok" onClick={saveNote}>Save</Button>
@@ -604,12 +678,13 @@ export default function App(){
 
       {detailsFor ? (
         (() => {
-          const ex = exerciseById(detailsFor)
+          const ex = exerciseByIdAndDay(activeDayKey, detailsFor)
           if(!ex) return null
-          const lines = historyByExId[detailsFor] || []
-          const entry = todaysLog[detailsFor]
+
+          const entry = normalizeExerciseRecord(currentSession[detailsFor])
           const plan = appState.plan?.[detailsFor]
           const tgt = formatTarget(ex, entry, plan)
+          const lines = entry.history.map(formatStateLabel).reverse()
 
           return (
             <Modal title={ex.name} onClose={() => setDetailsFor(null)}>
@@ -636,7 +711,6 @@ export default function App(){
                   )}
                 </div>
               </div>
-
             </Modal>
           )
         })()
