@@ -475,6 +475,7 @@ export default function App(){
   const [noteDraft, setNoteDraft] = React.useState('')
   const [detailsFor, setDetailsFor] = React.useState(null)
   const [showStateHelp, setShowStateHelp] = React.useState(false)
+  const [showSettings, setShowSettings] = React.useState(false)
 
   const activeDayKey = appState.dayKey === 'B' ? 'B' : 'A'
   const day = PROGRAM[activeDayKey]
@@ -601,6 +602,13 @@ export default function App(){
     persist(next)
   }
 
+  function clearAllData(){
+    const next = deepClone(appState)
+    next.sessions = { A: {}, B: {} }
+    persist(next)
+    setShowSettings(false)
+  }
+
   return (
     <div className="wrap">
       <header>
@@ -608,7 +616,10 @@ export default function App(){
           <h1>The Practice</h1>
           <div className="subtitle">One set. Stable targets. Quick tweaks. Honest history.</div>
         </div>
-        <button className="btn ghost topHelpBtn" onClick={() => setShowStateHelp(true)} title="Inevitable vs Contested help">?</button>
+        <div className="topActions">
+          <button className="btn ghost topSettingsBtn" onClick={() => setShowSettings(true)} title="Settings">Settings</button>
+          <button className="btn ghost topHelpBtn" onClick={() => setShowStateHelp(true)} title="Inevitable vs Contested help">?</button>
+        </div>
       </header>
 
       <div className="grid">
@@ -655,12 +666,11 @@ export default function App(){
             <div className="footerHint">
               Select a state per exercise, then press Log Training to seal this session.
             </div>
+            <div className="logTrainingWrap">
+              <button className="btn ok logTrainingBtn" onClick={sealTrainingSession}>Log Training</button>
+            </div>
           </div>
         </div>
-      </div>
-
-      <div className="logTrainingWrap">
-        <button className="btn ok logTrainingBtn" onClick={sealTrainingSession}>Log Training</button>
       </div>
 
       {noteFor ? (
@@ -728,6 +738,17 @@ export default function App(){
             <div className="helpLine">There was a moment where failure felt possible.</div>
             <div className="helpLine">You had to stay with the movement to allow it to complete.</div>
             <div className="helpSectionTitle">If unsure, choose Contested.</div>
+          </div>
+        </Modal>
+      ) : null}
+
+      {showSettings ? (
+        <Modal title="Settings" onClose={() => setShowSettings(false)}>
+          <div className="settingsMenu">
+            <button className="settingsItem danger" onClick={clearAllData}>
+              Clear data
+            </button>
+            <div className="tiny">This removes all logged history for Day A and Day B.</div>
           </div>
         </Modal>
       ) : null}
