@@ -200,6 +200,32 @@ const SEGMENT_MAP = {
   '9': ['a','b','c','d','f','g'],
 }
 
+const REP_RANGE_BY_ID = {
+  ohp: '5-7',
+  squat: '5-7',
+  pullups: '6-8',
+  chinups: '6-8',
+  inclinedb: '6-8',
+  rdl: '6-8',
+  tbar: '8-10',
+  dips: '6-10',
+  legcurl: '10-15',
+  legext: '10-15',
+  pecdeck: '10-15',
+  revpec: '10-15',
+  calves: '8-12',
+  skull: '8-12',
+  preacher: '8-12',
+  latraise: '12-20',
+  backext: '8-15',
+  legraises: '8-15',
+}
+
+function getRepLabel(exercise){
+  const range = REP_RANGE_BY_ID[exercise?.id]
+  return range ? `Reps (${range})` : 'Reps'
+}
+
 function formatSegmentNumber(value){
   if(typeof value !== 'number' || Number.isNaN(value)) return '0'
   const rounded = Math.round(value * 10) / 10
@@ -260,7 +286,7 @@ function formatTarget(ex, entry, plan){
     primary: `${w} lb`,
     secondary: `${r} reps`,
     left: { label: 'Weight', value: w, unit: 'lb' },
-    right: { label: 'Reps', value: r, unit: 'reps' },
+    right: { label: getRepLabel(ex), value: r, unit: 'reps' },
   }
 }
 
@@ -367,7 +393,7 @@ function ExerciseTile({
                 </div>
               </div>
               <div className="stepGroup">
-                <div className="stepLabel">Reps</div>
+                <div className="stepLabel">{getRepLabel(exercise)}</div>
                 <div className="stepBtns">
                   <button className="stepBtn" aria-label="Decrease reps" title="Decrease reps" onClick={() => onAdjust(exercise.id, 'reps', -exercise.repsStep)} />
                   <button className="stepBtn" aria-label="Increase reps" title="Increase reps" onClick={() => onAdjust(exercise.id, 'reps', +exercise.repsStep)} />
