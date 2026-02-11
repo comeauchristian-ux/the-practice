@@ -30,7 +30,7 @@ const PROGRAM = {
       { id:'legcurl', name:'Seated Leg Curls', hint:'', type:'strength', defaultWeight: 90, defaultReps: 12, weightStep: 5, repsStep: 1 },
       { id:'tbar', name:'Chest-Supported T-Bar Row', hint:'Wide grip', type:'strength', defaultWeight: 70, defaultReps: 12, weightStep: 5, repsStep: 1 },
       { id:'dips', name:'Chest Dips', hint:'', type:'strength', defaultWeight: 0, defaultReps: 12, weightStep: 5, repsStep: 1 },
-      { id:'backext', name:'Back Extensions', hint:'', type:'strength', defaultWeight: 0, defaultReps: 12, weightStep: 5, repsStep: 1 },
+      { id:'pullovers', name:'Pullovers', hint:'Dumbbells', type:'strength', defaultWeight: 0, defaultReps: 12, weightStep: 5, repsStep: 1 },
       { id:'pecdeck', name:'Pec Deck Fly', hint:'', type:'strength', defaultWeight: 120, defaultReps: 12, weightStep: 5, repsStep: 1 },
       { id:'revpec', name:'Reverse Pec Deck', hint:'', type:'strength', defaultWeight: 90, defaultReps: 12, weightStep: 5, repsStep: 1 },
       { id:'calves', name:'Standing Calf Raises', hint:'', type:'strength', defaultWeight: 600, defaultReps: 12, weightStep: 5, repsStep: 1 },
@@ -93,9 +93,11 @@ function normalizeExerciseRecord(raw){
 function migrateLegacyState(parsed){
   const next = {
     dayKey: parsed?.dayKey === 'B' ? 'B' : 'A',
-    plan: parsed?.plan || {},
+    plan: { ...(parsed?.plan || {}) },
     sessions: { A: {}, B: {} },
   }
+
+  delete next.plan.backext
 
   const logs = parsed?.logs || {}
   const dates = Object.keys(logs).sort()
@@ -106,6 +108,7 @@ function migrateLegacyState(parsed){
       if(!dayLog || typeof dayLog !== 'object') continue
 
       for(const exId of Object.keys(dayLog)){
+        if(exId === 'backext') continue
         const source = dayLog[exId]
         if(!source || typeof source !== 'object') continue
 
@@ -137,13 +140,16 @@ function migrateLegacyState(parsed){
 function normalizeLoadedState(parsed){
   const base = {
     dayKey: parsed?.dayKey === 'B' ? 'B' : 'A',
-    plan: parsed?.plan || {},
+    plan: { ...(parsed?.plan || {}) },
     sessions: { A: {}, B: {} },
   }
+
+  delete base.plan.backext
 
   for(const dayKey of ['A', 'B']){
     const session = parsed?.sessions?.[dayKey] || {}
     for(const exId of Object.keys(session)){
+      if(exId === 'backext') continue
       base.sessions[dayKey][exId] = normalizeExerciseRecord(session[exId])
     }
   }
@@ -217,7 +223,7 @@ const REP_RANGE_BY_ID = {
   skull: '8-12',
   preacher: '8-12',
   latraise: '12-20',
-  backext: '8-15',
+  pullovers: '8-15',
   legraises: '8-15',
 }
 
