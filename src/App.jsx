@@ -62,31 +62,70 @@ function normalizeState(raw){
   return raw === 'inevitable' || raw === 'contested' ? raw : undefined
 }
 
-function normalizeExerciseRecord(raw){
+function normalizeSessionRecord(raw){
   if(!raw || typeof raw !== 'object'){
-    return {
+    return {}
+  }
+  const next = {}
+  if(typeof raw.weight === 'number') next.weight = raw.weight
+  if(typeof raw.reps === 'number') next.reps = raw.reps
+  if(typeof raw.incline === 'number') next.incline = raw.incline
+  if(typeof raw.speed === 'number') next.speed = raw.speed
+  if(typeof raw.note === 'string' && raw.note.trim()) next.note = raw.note.trim()
+  const state = normalizeState(raw.state)
+  if(state) next.state = state
+  return next
+}
+
+function normalizeLastN(raw){
+  const source = Array.isArray(raw?.lastN)
+    ? raw.lastN
+    : Array.isArray(raw?.history)
+      ? raw.history
+      : []
+  return source.filter((s) => s === 'inevitable' || s === 'contested').slice(-12)
+}
+
+function normalizeLiftRecord(raw){
+  const lastN = normalizeLastN(raw)
+  const lastState = normalizeState(raw?.lastState) || lastN[lastN.length - 1]
+  return {
+    inevitableCount: normalizeCount(raw?.inevitableCount),
+    contestedCount: normalizeCount(raw?.contestedCount),
+    lastN,
+    ...(lastState ? { lastState } : {}),
+  }
+}
+
+function mergeLegacyLiftRecord(target, source){
+  if(!source || typeof source !== 'object') return
+  target.inevitableCount += normalizeCount(source.inevitableCount)
+  target.contestedCount += normalizeCount(source.contestedCount)
+  target.lastN = [...target.lastN, ...normalizeLastN(source)]
+  const sourceLastState = normalizeState(source.lastState) || normalizeState(source.state)
+  if(sourceLastState) target.lastState = sourceLastState
+}
+
+function collectLiftRecord(state, exId, source){
+  if(exId === 'backext') return
+  if(!state.lifts[exId]){
+    state.lifts[exId] = {
       inevitableCount: 0,
       contestedCount: 0,
-      history: [],
-      performanceHistory: [],
+      lastN: [],
     }
   }
+  mergeLegacyLiftRecord(state.lifts[exId], source)
+  state.lifts[exId].lastN = state.lifts[exId].lastN.slice(-12)
+  if(!normalizeState(state.lifts[exId].lastState) && state.lifts[exId].lastN.length){
+    state.lifts[exId].lastState = state.lifts[exId].lastN[state.lifts[exId].lastN.length - 1]
+  }
+}
 
-  const history = Array.isArray(raw.history)
-    ? raw.history.filter((s) => s === 'inevitable' || s === 'contested')
-    : []
-  const performanceHistory = Array.isArray(raw.performanceHistory)
-    ? raw.performanceHistory.filter((item) => typeof item === 'string' && item.trim())
-    : []
-
+function normalizeExerciseView(raw){
   return {
-    ...raw,
-    inevitableCount: normalizeCount(raw.inevitableCount),
-    contestedCount: normalizeCount(raw.contestedCount),
-    history,
-    performanceHistory,
-    lastState: normalizeState(raw.lastState),
-    state: normalizeState(raw.state),
+    ...normalizeLiftRecord(raw),
+    ...normalizeSessionRecord(raw),
   }
 }
 
@@ -95,6 +134,7 @@ function migrateLegacyState(parsed){
     dayKey: parsed?.dayKey === 'B' ? 'B' : 'A',
     plan: { ...(parsed?.plan || {}) },
     sessions: { A: {}, B: {} },
+    lifts: {},
   }
 
   delete next.plan.backext
@@ -112,7 +152,7 @@ function migrateLegacyState(parsed){
         const source = dayLog[exId]
         if(!source || typeof source !== 'object') continue
 
-        const current = normalizeExerciseRecord(next.sessions[dayKey][exId])
+        const current = normalizeSessionRecord(next.sessions[dayKey][exId])
         const merged = { ...current }
 
         if(typeof source.weight === 'number') merged.weight = source.weight
@@ -122,11 +162,18 @@ function migrateLegacyState(parsed){
         if(typeof source.note === 'string' && source.note.trim()) merged.note = source.note.trim()
 
         const state = normalizeState(source.state)
-        if(state === 'inevitable') merged.inevitableCount += 1
-        if(state === 'contested') merged.contestedCount += 1
         if(state){
-          merged.history = [...merged.history, state]
-          merged.lastState = state
+          if(!next.lifts[exId]){
+            next.lifts[exId] = {
+              inevitableCount: 0,
+              contestedCount: 0,
+              lastN: [],
+            }
+          }
+          if(state === 'inevitable') next.lifts[exId].inevitableCount += 1
+          if(state === 'contested') next.lifts[exId].contestedCount += 1
+          next.lifts[exId].lastN = [...next.lifts[exId].lastN, state].slice(-12)
+          next.lifts[exId].lastState = state
         }
 
         next.sessions[dayKey][exId] = merged
@@ -142,6 +189,7 @@ function normalizeLoadedState(parsed){
     dayKey: parsed?.dayKey === 'B' ? 'B' : 'A',
     plan: { ...(parsed?.plan || {}) },
     sessions: { A: {}, B: {} },
+    lifts: {},
   }
 
   delete base.plan.backext
@@ -150,7 +198,21 @@ function normalizeLoadedState(parsed){
     const session = parsed?.sessions?.[dayKey] || {}
     for(const exId of Object.keys(session)){
       if(exId === 'backext') continue
-      base.sessions[dayKey][exId] = normalizeExerciseRecord(session[exId])
+      base.sessions[dayKey][exId] = normalizeSessionRecord(session[exId])
+    }
+  }
+
+  if(parsed?.lifts && typeof parsed.lifts === 'object'){
+    for(const exId of Object.keys(parsed.lifts)){
+      if(exId === 'backext') continue
+      base.lifts[exId] = normalizeLiftRecord(parsed.lifts[exId])
+    }
+  }else{
+    for(const dayKey of ['A', 'B']){
+      const session = parsed?.sessions?.[dayKey] || {}
+      for(const exId of Object.keys(session)){
+        collectLiftRecord(base, exId, session[exId])
+      }
     }
   }
 
@@ -162,18 +224,22 @@ function loadState(){
     const raw = localStorage.getItem(STORAGE_KEY)
     if(raw){
       const parsed = JSON.parse(raw)
-      return normalizeLoadedState(parsed)
+      const normalized = normalizeLoadedState(parsed)
+      saveState(normalized)
+      return normalized
     }
 
     const legacyRaw = localStorage.getItem(LEGACY_STORAGE_KEY)
     if(legacyRaw){
       const parsedLegacy = JSON.parse(legacyRaw)
-      return migrateLegacyState(parsedLegacy)
+      const migrated = migrateLegacyState(parsedLegacy)
+      saveState(migrated)
+      return migrated
     }
 
-    return { dayKey: 'A', plan: {}, sessions: { A: {}, B: {} } }
+    return { dayKey: 'A', plan: {}, sessions: { A: {}, B: {} }, lifts: {} }
   }catch(e){
-    return { dayKey: 'A', plan: {}, sessions: { A: {}, B: {} } }
+    return { dayKey: 'A', plan: {}, sessions: { A: {}, B: {} }, lifts: {} }
   }
 }
 
@@ -326,7 +392,7 @@ function ExerciseTile({
   onClearState,
 }){
   const target = formatTarget(exercise, entry, planEntry)
-  const stableEntry = normalizeExerciseRecord(entry)
+  const stableEntry = normalizeExerciseView(entry)
 
   const tileCls = [
     'tile',
@@ -334,7 +400,7 @@ function ExerciseTile({
     stableEntry?.state === 'contested' ? 'tileWarn' : '',
   ].filter(Boolean).join(' ')
 
-  const recentBlocks = stableEntry.history.slice(-12)
+  const recentBlocks = stableEntry.lastN
   const frequencyLines = buildFrequencyLines(stableEntry.performanceHistory)
 
   return (
@@ -469,33 +535,30 @@ function ensureSession(state, dayKey){
   return state
 }
 
+function ensureLift(state, exId){
+  if(!state.lifts) state.lifts = {}
+  if(!state.lifts[exId]){
+    state.lifts[exId] = {
+      inevitableCount: 0,
+      contestedCount: 0,
+      lastN: [],
+    }
+  }
+  state.lifts[exId] = normalizeLiftRecord(state.lifts[exId])
+  return state
+}
+
 function ensureExerciseSession(state, dayKey, exId){
   ensureSession(state, dayKey)
   if(!state.sessions[dayKey][exId]){
-    state.sessions[dayKey][exId] = {
-      inevitableCount: 0,
-      contestedCount: 0,
-      history: [],
-      performanceHistory: [],
-    }
+    state.sessions[dayKey][exId] = {}
   }
-  state.sessions[dayKey][exId] = normalizeExerciseRecord(state.sessions[dayKey][exId])
+  state.sessions[dayKey][exId] = normalizeSessionRecord(state.sessions[dayKey][exId])
   return state
 }
 
 function exerciseByIdAndDay(dayKey, exId){
   return PROGRAM[dayKey]?.exercises?.find((e) => e.id === exId) || null
-}
-
-function buildPerformanceSignature(exercise, record, planEntry){
-  if(exercise.type === 'cardio'){
-    const incline = record.incline ?? planEntry?.defaultIncline ?? exercise.defaultIncline ?? 0
-    const speed = record.speed ?? planEntry?.defaultSpeed ?? exercise.defaultSpeed ?? 0
-    return `${incline}% @ ${speed} kph`
-  }
-  const weight = record.weight ?? planEntry?.defaultWeight ?? exercise.defaultWeight ?? 0
-  const reps = record.reps ?? planEntry?.defaultReps ?? exercise.defaultReps ?? 0
-  return `${weight} lb x ${reps} reps`
 }
 
 // ===========================
@@ -512,6 +575,7 @@ export default function App(){
   const activeDayKey = appState.dayKey === 'B' ? 'B' : 'A'
   const day = PROGRAM[activeDayKey]
   const currentSession = appState.sessions?.[activeDayKey] || {}
+  const sharedLifts = appState.lifts || {}
 
   function persist(next){
     setAppState(next)
@@ -526,14 +590,14 @@ export default function App(){
 
   function updateExercise(exId, patch){
     const next = ensureExerciseSession(deepClone(appState), activeDayKey, exId)
-    const prev = normalizeExerciseRecord(next.sessions[activeDayKey][exId])
+    const prev = normalizeSessionRecord(next.sessions[activeDayKey][exId])
     next.sessions[activeDayKey][exId] = { ...prev, ...patch, state: normalizeState(patch.state ?? prev.state) }
     persist(next)
   }
 
   function clearExerciseState(exId){
     const next = ensureExerciseSession(deepClone(appState), activeDayKey, exId)
-    const prev = normalizeExerciseRecord(next.sessions[activeDayKey][exId])
+    const prev = normalizeSessionRecord(next.sessions[activeDayKey][exId])
     if(!prev.state) return
     const { state, ...rest } = prev
     next.sessions[activeDayKey][exId] = rest
@@ -545,24 +609,25 @@ export default function App(){
 
     for(const ex of day.exercises){
       ensureExerciseSession(next, activeDayKey, ex.id)
-      const record = normalizeExerciseRecord(next.sessions[activeDayKey][ex.id])
+      ensureLift(next, ex.id)
+      const record = normalizeSessionRecord(next.sessions[activeDayKey][ex.id])
+      const lift = normalizeLiftRecord(next.lifts[ex.id])
 
       if(record.state === 'inevitable'){
-        record.inevitableCount += 1
-        record.history = [...record.history, 'inevitable']
-        record.performanceHistory = [...record.performanceHistory, buildPerformanceSignature(ex, record, next.plan?.[ex.id])]
-        record.lastState = 'inevitable'
+        lift.inevitableCount += 1
+        lift.lastN = [...lift.lastN, 'inevitable'].slice(-12)
+        lift.lastState = 'inevitable'
       }else if(record.state === 'contested'){
-        record.contestedCount += 1
-        record.history = [...record.history, 'contested']
-        record.performanceHistory = [...record.performanceHistory, buildPerformanceSignature(ex, record, next.plan?.[ex.id])]
-        record.lastState = 'contested'
+        lift.contestedCount += 1
+        lift.lastN = [...lift.lastN, 'contested'].slice(-12)
+        lift.lastState = 'contested'
       }
 
       // Explicitly clear current session markers after sealing.
       delete record.state
       delete record.note
       next.sessions[activeDayKey][ex.id] = record
+      next.lifts[ex.id] = lift
     }
 
     persist(next)
@@ -588,7 +653,7 @@ export default function App(){
     const ex = exerciseByIdAndDay(activeDayKey, exId)
     if(!ex) return
 
-    const entry = normalizeExerciseRecord(currentSession[exId])
+    const entry = normalizeSessionRecord(currentSession[exId])
     const plan = appState.plan?.[exId] || {}
 
     if(ex.type === 'cardio'){
@@ -619,7 +684,7 @@ export default function App(){
     const ex = exerciseByIdAndDay(activeDayKey, exId)
     if(!ex) return
 
-    const entry = normalizeExerciseRecord(currentSession[exId])
+    const entry = normalizeSessionRecord(currentSession[exId])
     const next = ensurePlan(deepClone(appState))
     if(!next.plan[exId]) next.plan[exId] = {}
 
@@ -637,6 +702,7 @@ export default function App(){
   function clearAllData(){
     const next = deepClone(appState)
     next.sessions = { A: {}, B: {} }
+    next.lifts = {}
     persist(next)
     setShowSettings(false)
   }
@@ -684,7 +750,7 @@ export default function App(){
                 <ExerciseTile
                   key={ex.id}
                   exercise={ex}
-                  entry={currentSession[ex.id]}
+                  entry={{ ...sharedLifts[ex.id], ...currentSession[ex.id] }}
                   planEntry={appState.plan?.[ex.id]}
                   onSetState={(id, state) => updateExercise(id, { state })}
                   onAdjust={adjust}
@@ -723,10 +789,11 @@ export default function App(){
           const ex = exerciseByIdAndDay(activeDayKey, detailsFor)
           if(!ex) return null
 
-          const entry = normalizeExerciseRecord(currentSession[detailsFor])
+          const entry = normalizeSessionRecord(currentSession[detailsFor])
+          const lift = normalizeLiftRecord(sharedLifts[detailsFor])
           const plan = appState.plan?.[detailsFor]
           const tgt = formatTarget(ex, entry, plan)
-          const lines = entry.history.map(formatStateLabel).reverse()
+          const lines = lift.lastN.map(formatStateLabel).reverse()
 
           return (
             <Modal title={ex.name} onClose={() => setDetailsFor(null)}>
