@@ -78,12 +78,46 @@ function normalizeSessionRecord(raw){
 }
 
 function normalizeLastN(raw){
+  return extractStateSequence(raw).slice(-12)
+}
+
+function extractStateSequence(raw){
   const source = Array.isArray(raw?.lastN)
     ? raw.lastN
     : Array.isArray(raw?.history)
       ? raw.history
       : []
-  return source.filter((s) => s === 'inevitable' || s === 'contested').slice(-12)
+  return source.filter((s) => s === 'inevitable' || s === 'contested')
+}
+
+function mergeDayStateSequences(rawA, rawB){
+  const seqA = extractStateSequence(rawA)
+  const seqB = extractStateSequence(rawB)
+  const mergedFromNewest = []
+  let i = seqA.length - 1
+  let j = seqB.length - 1
+  // If one day has more entries, assume its tail is more likely to contain the latest log.
+  let takeA = seqA.length > seqB.length
+
+  while(i >= 0 || j >= 0){
+    if(takeA && i >= 0){
+      mergedFromNewest.push(seqA[i--])
+      takeA = false
+      continue
+    }
+    if(!takeA && j >= 0){
+      mergedFromNewest.push(seqB[j--])
+      takeA = true
+      continue
+    }
+    if(i >= 0){
+      mergedFromNewest.push(seqA[i--])
+    }else if(j >= 0){
+      mergedFromNewest.push(seqB[j--])
+    }
+  }
+
+  return mergedFromNewest.reverse().slice(-12)
 }
 
 function normalizeLiftRecord(raw){
@@ -94,31 +128,6 @@ function normalizeLiftRecord(raw){
     contestedCount: normalizeCount(raw?.contestedCount),
     lastN,
     ...(lastState ? { lastState } : {}),
-  }
-}
-
-function mergeLegacyLiftRecord(target, source){
-  if(!source || typeof source !== 'object') return
-  target.inevitableCount += normalizeCount(source.inevitableCount)
-  target.contestedCount += normalizeCount(source.contestedCount)
-  target.lastN = [...target.lastN, ...normalizeLastN(source)]
-  const sourceLastState = normalizeState(source.lastState) || normalizeState(source.state)
-  if(sourceLastState) target.lastState = sourceLastState
-}
-
-function collectLiftRecord(state, exId, source){
-  if(exId === 'backext') return
-  if(!state.lifts[exId]){
-    state.lifts[exId] = {
-      inevitableCount: 0,
-      contestedCount: 0,
-      lastN: [],
-    }
-  }
-  mergeLegacyLiftRecord(state.lifts[exId], source)
-  state.lifts[exId].lastN = state.lifts[exId].lastN.slice(-12)
-  if(!normalizeState(state.lifts[exId].lastState) && state.lifts[exId].lastN.length){
-    state.lifts[exId].lastState = state.lifts[exId].lastN[state.lifts[exId].lastN.length - 1]
   }
 }
 
@@ -208,11 +217,21 @@ function normalizeLoadedState(parsed){
       base.lifts[exId] = normalizeLiftRecord(parsed.lifts[exId])
     }
   }else{
-    for(const dayKey of ['A', 'B']){
-      const session = parsed?.sessions?.[dayKey] || {}
-      for(const exId of Object.keys(session)){
-        collectLiftRecord(base, exId, session[exId])
+    const sessionA = parsed?.sessions?.A || {}
+    const sessionB = parsed?.sessions?.B || {}
+    const exIds = new Set([...Object.keys(sessionA), ...Object.keys(sessionB)])
+    for(const exId of exIds){
+      if(exId === 'backext') continue
+      const recA = sessionA[exId]
+      const recB = sessionB[exId]
+      const merged = {
+        inevitableCount: normalizeCount(recA?.inevitableCount) + normalizeCount(recB?.inevitableCount),
+        contestedCount: normalizeCount(recA?.contestedCount) + normalizeCount(recB?.contestedCount),
+        lastN: mergeDayStateSequences(recA, recB),
       }
+      const lastState = normalizeState(recA?.lastState) || normalizeState(recB?.lastState) || merged.lastN[merged.lastN.length - 1]
+      if(lastState) merged.lastState = lastState
+      base.lifts[exId] = merged
     }
   }
 
