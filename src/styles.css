@@ -194,26 +194,28 @@ h1{
 }
 .btn:active{ transform: scale(.98); }
 .btn.ok{
-  border-color: rgba(84,255,134,.62);
-  background: linear-gradient(180deg, rgba(39,160,89,.34), rgba(20,70,46,.30));
-  color: #dfffe8;
-  box-shadow: inset 0 1px 0 rgba(255,255,255,.14), 0 0 14px rgba(84,255,134,.18);
+  border-color: rgba(108,255,156,.78);
+  background: linear-gradient(180deg, rgba(66,208,125,.50), rgba(26,98,60,.42));
+  color: #edfff3;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.18), 0 0 16px rgba(90,255,146,.28);
 }
 .btn.ok.active{
-  border-color: rgba(92,255,146,.80);
-  background: linear-gradient(180deg, rgba(56,188,110,.58), rgba(25,88,54,.48));
-  box-shadow: inset 0 1px 0 rgba(255,255,255,.20), 0 0 18px rgba(86,255,144,.38);
+  border-color: rgba(142,255,183,.98);
+  background: linear-gradient(180deg, rgba(108,255,167,.88), rgba(44,164,96,.82));
+  color: #f6fff9;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.34), 0 0 24px rgba(98,255,158,.62);
 }
 .btn.warn{
-  border-color: rgba(255,163,90,.62);
-  background: linear-gradient(180deg, rgba(183,86,56,.34), rgba(92,43,31,.30));
-  color: #ffe5d8;
-  box-shadow: inset 0 1px 0 rgba(255,255,255,.14), 0 0 14px rgba(255,163,90,.16);
+  border-color: rgba(255,186,122,.78);
+  background: linear-gradient(180deg, rgba(226,120,76,.50), rgba(116,54,38,.42));
+  color: #fff0e4;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.18), 0 0 16px rgba(255,174,108,.26);
 }
 .btn.warn.active{
-  border-color: rgba(255,174,104,.80);
-  background: linear-gradient(180deg, rgba(206,96,62,.58), rgba(108,48,35,.50));
-  box-shadow: inset 0 1px 0 rgba(255,255,255,.20), 0 0 18px rgba(255,168,98,.36);
+  border-color: rgba(255,208,146,.98);
+  background: linear-gradient(180deg, rgba(255,177,112,.88), rgba(208,92,56,.82));
+  color: #fff9f2;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.34), 0 0 24px rgba(255,185,116,.60);
 }
 .btn.done{
   border-color: rgba(172,135,206,.46);
